@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Cost Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        /* Custom styling for the file input button */
+        .file-upload-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+        }
+        .file-upload-wrapper input[type=file] {
+            font-size: 100px;
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <!-- Main Container -->
+    <div class="bg-white rounded-2xl shadow-xl p-8 max-w-lg w-full text-center border border-gray-200">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6">Program Cost Analyzer</h1>
+        <p class="text-gray-600 mb-8">Upload a .csv file to calculate the cost allocation between two programs: BikesOnline USA and Bikes Online Australia.</p>
+
+        <!-- Upload Button and File Name Display -->
+        <div class="flex flex-col items-center space-y-4">
+            <div class="file-upload-wrapper">
+                <button id="upload-btn" class="bg-blue-600 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:bg-blue-700 transition duration-300 transform hover:scale-105">
+                    Choose CSV File
+                </button>
+                <input type="file" id="csvFileInput" accept=".csv" class="hidden">
+            </div>
+            <span id="fileNameDisplay" class="text-sm text-gray-500 font-medium">No file selected.</span>
+        </div>
+
+        <!-- Status and Result Display -->
+        <div id="statusMessage" class="mt-8 text-lg font-medium text-gray-700 hidden"></div>
+        <div id="results" class="mt-8"></div>
+    </div>
+
+    <!-- PapaParse CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+
+    <script>
+        // DOM element references
+        const csvFileInput = document.getElementById('csvFileInput');
+        const uploadButton = document.getElementById('upload-btn');
+        const fileNameDisplay = document.getElementById('fileNameDisplay');
+        const statusMessage = document.getElementById('statusMessage');
+        const resultsDiv = document.getElementById('results');
+
+        // Program names to analyze
+        const programUSA = "BikesOnline USA";
+        const programAustralia = "Bikes Online Australia";
+
+        // Click handler for the custom button
+        uploadButton.addEventListener('click', () => {
+            csvFileInput.click();
+        });
+
+        // Event listener for file selection
+        csvFileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) {
+                fileNameDisplay.textContent = 'No file selected.';
+                return;
+            }
+
+            fileNameDisplay.textContent = file.name;
+            resultsDiv.innerHTML = ''; // Clear previous results
+            statusMessage.textContent = 'Parsing file...';
+            statusMessage.classList.remove('hidden');
+
+            // Using PapaParse to process the CSV file
+            Papa.parse(file, {
+                header: true, // Treat the first row as headers
+                dynamicTyping: true, // Automatically convert numbers and booleans
+                skipEmptyLines: true,
+                complete: function(results) {
+                    processData(results.data);
+                },
+                error: function(err) {
+                    statusMessage.textContent = 'Error parsing file: ' + err.message;
+                    resultsDiv.innerHTML = '';
+                }
+            });
+        });
+
+        /**
+         * Processes the parsed CSV data to calculate and display program allocations.
+         * @param {Array<Object>} data - An array of objects representing the CSV rows.
+         */
+        function processData(data) {
+            let usaCost = 0;
+            let australiaCost = 0;
+
+            // Check if the expected columns exist based on user's feedback
+            const requiredProgramColumn = "Program";
+            const requiredCostColumn = "Gross Cost";
+
+            if (data.length === 0 || !data[0].hasOwnProperty(requiredProgramColumn) || !data[0].hasOwnProperty(requiredCostColumn)) {
+                statusMessage.textContent = `Error: The CSV file must contain columns named "${requiredProgramColumn}" and "${requiredCostColumn}".`;
+                statusMessage.classList.remove('hidden');
+                return;
+            }
+
+            // A function to clean the program name string
+            function cleanString(str) {
+                // Trim leading/trailing whitespace and remove zero-width non-breaking space
+                return String(str || '').trim().replace(/\u200B/g, '');
+            }
+
+            data.forEach(row => {
+                const programName = cleanString(row[requiredProgramColumn]);
+                // Remove both commas and dollar signs before parsing
+                const grossCostString = String(row[requiredCostColumn] || '0').replace(/,|\$/g, '');
+                const grossCost = parseFloat(grossCostString);
+
+                if (!isNaN(grossCost) && programName) {
+                    if (programName === programUSA) {
+                        usaCost += grossCost;
+                    } else if (programName === programAustralia) {
+                        australiaCost += grossCost;
+                    }
+                }
+            });
+
+            const totalCost = usaCost + australiaCost;
+            statusMessage.classList.add('hidden');
+
+            if (totalCost === 0) {
+                resultsDiv.innerHTML = `
+                    <div class="p-6 bg-yellow-100 rounded-xl border border-yellow-200">
+                        <p class="text-yellow-800">No gross cost data found for either program, or the total cost is zero.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const usaPercentage = ((usaCost / totalCost) * 100).toFixed(2);
+            const australiaPercentage = ((australiaCost / totalCost) * 100).toFixed(2);
+
+            resultsDiv.innerHTML = `
+                <div class="bg-gray-50 rounded-xl p-6 shadow-md border border-gray-200">
+                    <h3 class="text-2xl font-bold text-gray-800 mb-4">Program Cost Allocation</h3>
+                    <div class="flex flex-col space-y-4">
+                        <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <span class="text-lg font-semibold text-gray-700">${programUSA}:</span>
+                            <span class="text-lg font-bold text-blue-600">${usaPercentage}%</span>
+                        </div>
+                        <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <span class="text-lg font-semibold text-gray-700">${programAustralia}:</span>
+                            <span class="text-lg font-bold text-blue-600">${australiaPercentage}%</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
